@@ -19,6 +19,41 @@ st.set_page_config(
 
 
 # =====================================================
+# GEMINI SETTINGS
+# =====================================================
+
+MODEL_NAME = "gemini-3.8-flash"
+
+
+def get_api_key():
+
+    try:
+        return st.secrets["GEMINI_API_KEY"]
+
+    except Exception:
+
+        return os.getenv("GEMINI_API_KEY")
+
+
+def get_gemini_client():
+
+    api_key = get_api_key()
+
+    if not api_key:
+        return None
+
+    try:
+
+        return genai.Client(
+            api_key=api_key
+        )
+
+    except Exception:
+
+        return None
+
+
+# =====================================================
 # DARK THEME
 # =====================================================
 
@@ -56,37 +91,6 @@ st.markdown("""
 
 
 # =====================================================
-# GEMINI SETTINGS
-# =====================================================
-model = genai.GenerativeModel("models/gemini-3.8-flash")
-
-
-
-def get_api_key():
-
-    try:
-        return st.secrets["GEMINI_API_KEY"]
-
-    except Exception:
-
-        return os.getenv("GEMINI_API_KEY")
-
-
-def get_gemini_client():
-
-    api_key = get_api_key()
-
-    if not api_key:
-        return None
-
-    try:
-        return genai.Client(api_key=api_key)
-
-    except Exception:
-        return None
-
-
-# =====================================================
 # SESSION STATE
 # =====================================================
 
@@ -106,7 +110,11 @@ if "chunks" not in st.session_state:
 
 def clean_text(text):
 
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
 
     return text.strip()
 
@@ -121,7 +129,9 @@ def extract_pdf(uploaded_file):
 
     try:
 
-        reader = PyPDF2.PdfReader(uploaded_file)
+        reader = PyPDF2.PdfReader(
+            uploaded_file
+        )
 
         for page in reader.pages:
 
@@ -148,7 +158,9 @@ def extract_docx(uploaded_file):
 
     try:
 
-        document = Document(uploaded_file)
+        document = Document(
+            uploaded_file
+        )
 
         for paragraph in document.paragraphs:
 
@@ -193,15 +205,21 @@ def extract_file(uploaded_file):
 
     if file_name.endswith(".pdf"):
 
-        return extract_pdf(uploaded_file)
+        return extract_pdf(
+            uploaded_file
+        )
 
     elif file_name.endswith(".docx"):
 
-        return extract_docx(uploaded_file)
+        return extract_docx(
+            uploaded_file
+        )
 
     elif file_name.endswith(".txt"):
 
-        return extract_txt(uploaded_file)
+        return extract_txt(
+            uploaded_file
+        )
 
     return ""
 
@@ -230,7 +248,9 @@ def create_chunks(
 
         end = start + chunk_size
 
-        chunk = text[start:end].strip()
+        chunk = text[
+            start:end
+        ].strip()
 
         if chunk:
 
@@ -290,7 +310,8 @@ def retrieve_relevant_chunks(
 
     selected = [
         chunk
-        for score, chunk in scored_chunks[:top_k]
+        for score, chunk
+        in scored_chunks[:top_k]
         if score > 0
     ]
 
@@ -305,7 +326,10 @@ def retrieve_relevant_chunks(
 # ASK GEMINI
 # =====================================================
 
-def ask_gemini(question, context):
+def ask_gemini(
+    question,
+    context
+):
 
     client = get_gemini_client()
 
@@ -314,8 +338,9 @@ def ask_gemini(question, context):
         return """
 ⚠️ Gemini API is not connected.
 
-Please add GEMINI_API_KEY in
-Streamlit Cloud → Settings → Secrets.
+Please add GEMINI_API_KEY in:
+
+Streamlit Cloud → Settings → Secrets
 """
 
     system_prompt = """
@@ -361,7 +386,9 @@ Answer the student's question clearly.
 
             return response.text
 
-        return "Sorry, I could not generate an answer."
+        return (
+            "Sorry, I could not generate an answer."
+        )
 
     except Exception as e:
 
@@ -372,6 +399,7 @@ Please check your Gemini API key and
 Streamlit Cloud settings.
 
 Error:
+
 {e}
 """
 
@@ -382,7 +410,9 @@ Error:
 
 with st.sidebar:
 
-    st.title("🎓 Study with Subha")
+    st.title(
+        "🎓 Study with Subha"
+    )
 
     st.write(
         "Your personal AI study assistant."
@@ -401,7 +431,9 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader("📚 Upload Study Material")
+    st.subheader(
+        "📚 Upload Study Material"
+    )
 
     uploaded_files = st.file_uploader(
         "Upload PDF, TXT or DOCX",
@@ -427,7 +459,9 @@ with st.sidebar:
 
             if text:
 
-                chunks = create_chunks(text)
+                chunks = create_chunks(
+                    text
+                )
 
                 st.session_state.documents.append(
                     uploaded_file.name
@@ -444,7 +478,9 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader("🤖 AI Status")
+    st.subheader(
+        "🤖 AI Status"
+    )
 
     api_key = get_api_key()
 
@@ -490,29 +526,32 @@ st.markdown(
 
 if not st.session_state.messages:
 
-    st.markdown("""
-    <div class="info-box">
+    st.markdown(
+        """
+        <div class="info-box">
 
-    👋 <b>Welcome!</b>
+        👋 <b>Welcome!</b>
 
-    <br><br>
+        <br><br>
 
-    📚 Upload your study material from the sidebar.
+        📚 Upload your study material from the sidebar.
 
-    <br>
+        <br>
 
-    🤖 Ask questions about your notes.
+        🤖 Ask questions about your notes.
 
-    <br>
+        <br>
 
-    ✍️ Get simple exam-ready answers.
+        ✍️ Get simple exam-ready answers.
 
-    <br>
+        <br>
 
-    🌐 You can ask questions in English or Bengali.
+        🌐 You can ask questions in English or Bengali.
 
-    </div>
-    """, unsafe_allow_html=True)
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # =====================================================
@@ -554,7 +593,9 @@ if question:
 
     with st.chat_message("user"):
 
-        st.markdown(question)
+        st.markdown(
+            question
+        )
 
 
     # -------------------------------------------------
@@ -600,7 +641,9 @@ if question:
                 context
             )
 
-            st.markdown(answer)
+            st.markdown(
+                answer
+            )
 
 
     # -------------------------------------------------
