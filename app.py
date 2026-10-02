@@ -1,8 +1,10 @@
 import streamlit as st
 import PyPDF2
 from docx import Document
-import ollama
 import re
+import os
+
+from google import genai
 
 
 # =====================================================
@@ -54,10 +56,34 @@ st.markdown("""
 
 
 # =====================================================
-# SETTINGS
+# GEMINI SETTINGS
 # =====================================================
 
-MODEL_NAME = "llama3.2:3b"
+MODEL_NAME = "gemini-2.5-flash"
+
+
+def get_api_key():
+
+    try:
+        return st.secrets["GEMINI_API_KEY"]
+
+    except Exception:
+
+        return os.getenv("GEMINI_API_KEY")
+
+
+def get_gemini_client():
+
+    api_key = get_api_key()
+
+    if not api_key:
+        return None
+
+    try:
+        return genai.Client(api_key=api_key)
+
+    except Exception:
+        return None
 
 
 # =====================================================
@@ -79,7 +105,9 @@ if "chunks" not in st.session_state:
 # =====================================================
 
 def clean_text(text):
+
     text = re.sub(r"\s+", " ", text)
+
     return text.strip()
 
 
@@ -92,15 +120,19 @@ def extract_pdf(uploaded_file):
     text = ""
 
     try:
+
         reader = PyPDF2.PdfReader(uploaded_file)
 
         for page in reader.pages:
+
             page_text = page.extract_text()
 
             if page_text:
+
                 text += page_text + "\n"
 
     except Exception as e:
+
         return f"PDF reading error: {e}"
 
     return clean_text(text)
@@ -115,13 +147,17 @@ def extract_docx(uploaded_file):
     text = ""
 
     try:
+
         document = Document(uploaded_file)
 
         for paragraph in document.paragraphs:
+
             if paragraph.text.strip():
+
                 text += paragraph.text + "\n"
 
     except Exception as e:
+
         return f"DOCX reading error: {e}"
 
     return clean_text(text)
@@ -134,11 +170,16 @@ def extract_docx(uploaded_file):
 def extract_txt(uploaded_file):
 
     try:
+
         return clean_text(
-            uploaded_file.read().decode("utf-8", errors="ignore")
+            uploaded_file.read().decode(
+                "utf-8",
+                errors="ignore"
+            )
         )
 
     except Exception as e:
+
         return f"TXT reading error: {e}"
 
 
@@ -151,12 +192,15 @@ def extract_file(uploaded_file):
     file_name = uploaded_file.name.lower()
 
     if file_name.endswith(".pdf"):
+
         return extract_pdf(uploaded_file)
 
     elif file_name.endswith(".docx"):
+
         return extract_docx(uploaded_file)
 
     elif file_name.endswith(".txt"):
+
         return extract_txt(uploaded_file)
 
     return ""
@@ -166,14 +210,20 @@ def extract_file(uploaded_file):
 # CREATE TEXT CHUNKS
 # =====================================================
 
-def create_chunks(text, chunk_size=1200, overlap=200):
+def create_chunks(
+    text,
+    chunk_size=1200,
+    overlap=200
+):
 
     if not text:
+
         return []
 
     chunks = []
 
     start = 0
+
     text_length = len(text)
 
     while start < text_length:
@@ -183,6 +233,7 @@ def create_chunks(text, chunk_size=1200, overlap=200):
         chunk = text[start:end].strip()
 
         if chunk:
+
             chunks.append(chunk)
 
         start = end - overlap
@@ -194,9 +245,14 @@ def create_chunks(text, chunk_size=1200, overlap=200):
 # RETRIEVE RELEVANT CHUNKS
 # =====================================================
 
-def retrieve_relevant_chunks(question, chunks, top_k=5):
+def retrieve_relevant_chunks(
+    question,
+    chunks,
+    top_k=5
+):
 
     if not chunks:
+
         return []
 
     question_words = set(
@@ -217,7 +273,11 @@ def retrieve_relevant_chunks(question, chunks, top_k=5):
             )
         )
 
-        score = len(question_words.intersection(chunk_words))
+        score = len(
+            question_words.intersection(
+                chunk_words
+            )
+        )
 
         scored_chunks.append(
             (score, chunk)
@@ -235,16 +295,28 @@ def retrieve_relevant_chunks(question, chunks, top_k=5):
     ]
 
     if not selected:
+
         selected = chunks[:top_k]
 
     return selected
 
 
 # =====================================================
-# ASK OLLAMA
+# ASK GEMINI
 # =====================================================
 
-def ask_ollama(question, context):
+def ask_gemini(question, context):
+
+    client = get_gemini_client()
+
+    if client is None:
+
+        return """
+⚠️ Gemini API is not connected.
+
+Please add GEMINI_API_KEY in
+Streamlit Cloud → Settings → Secrets.
+"""
 
     system_prompt = """
 You are Study with Subha, an AI study assistant.
@@ -252,6 +324,7 @@ You are Study with Subha, an AI study assistant.
 Your job is to help students understand their study materials.
 
 Rules:
+
 1. Give simple and clear answers.
 2. If the user asks in Bengali, answer in Bengali.
 3. If the user asks in English, answer in simple English.
@@ -260,14 +333,17 @@ Rules:
 6. Do not invent information that is not supported by the material.
 7. If the answer is not available in the material, clearly say that.
 8. Use headings and bullet points when useful.
+9. Keep explanations suitable for a college student.
 """
 
     user_prompt = f"""
-Study Material:
+{system_prompt}
+
+STUDY MATERIAL:
 
 {context}
 
-Student Question:
+STUDENT QUESTION:
 
 {question}
 
@@ -276,52 +352,28 @@ Answer the student's question clearly.
 
     try:
 
-        response = ollama.chat(
+        response = client.models.generate_content(
             model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
-            ]
+            contents=user_prompt
         )
 
-        return response["message"]["content"]
+        if response.text:
+
+            return response.text
+
+        return "Sorry, I could not generate an answer."
 
     except Exception as e:
 
         return f"""
-AI connection error.
+⚠️ AI error occurred.
 
-Please make sure Ollama is installed and running.
-
-Model required:
-{MODEL_NAME}
+Please check your Gemini API key and
+Streamlit Cloud settings.
 
 Error:
 {e}
 """
-
-
-# =====================================================
-# CHECK OLLAMA
-# =====================================================
-
-def check_ollama():
-
-    try:
-
-        ollama.list()
-
-        return True
-
-    except Exception:
-
-        return False
 
 
 # =====================================================
@@ -332,7 +384,9 @@ with st.sidebar:
 
     st.title("🎓 Study with Subha")
 
-    st.write("Your personal AI study assistant.")
+    st.write(
+        "Your personal AI study assistant."
+    )
 
     st.divider()
 
@@ -351,18 +405,25 @@ with st.sidebar:
 
     uploaded_files = st.file_uploader(
         "Upload PDF, TXT or DOCX",
-        type=["pdf", "txt", "docx"],
+        type=[
+            "pdf",
+            "txt",
+            "docx"
+        ],
         accept_multiple_files=True
     )
 
     if uploaded_files:
 
         st.session_state.documents = []
+
         st.session_state.chunks = []
 
         for uploaded_file in uploaded_files:
 
-            text = extract_file(uploaded_file)
+            text = extract_file(
+                uploaded_file
+            )
 
             if text:
 
@@ -377,20 +438,27 @@ with st.sidebar:
                 )
 
         st.success(
-            f"{len(st.session_state.documents)} file(s) loaded."
+            f"{len(st.session_state.documents)} "
+            f"file(s) loaded."
         )
 
     st.divider()
 
     st.subheader("🤖 AI Status")
 
-    if check_ollama():
+    api_key = get_api_key()
 
-        st.success("Ollama is connected")
+    if api_key:
+
+        st.success(
+            "Gemini API connected"
+        )
 
     else:
 
-        st.error("Ollama is not running")
+        st.error(
+            "Gemini API key missing"
+        )
 
     st.caption(
         f"Model: {MODEL_NAME}"
@@ -402,12 +470,16 @@ with st.sidebar:
 # =====================================================
 
 st.markdown(
-    '<div class="main-title">🎓 Study with Subha</div>',
+    '<div class="main-title">'
+    '🎓 Study with Subha'
+    '</div>',
     unsafe_allow_html=True
 )
 
 st.markdown(
-    '<div class="subtitle">Your Free Local AI Study Assistant</div>',
+    '<div class="subtitle">'
+    'Your AI Study Assistant'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -449,7 +521,9 @@ if not st.session_state.messages:
 
 for message in st.session_state.messages:
 
-    with st.chat_message(message["role"]):
+    with st.chat_message(
+        message["role"]
+    ):
 
         st.markdown(
             message["content"]
@@ -467,7 +541,9 @@ question = st.chat_input(
 
 if question:
 
-    # Show user question
+    # -------------------------------------------------
+    # USER QUESTION
+    # -------------------------------------------------
 
     st.session_state.messages.append(
         {
@@ -481,7 +557,9 @@ if question:
         st.markdown(question)
 
 
-    # Retrieve relevant material
+    # -------------------------------------------------
+    # RETRIEVE STUDY MATERIAL
+    # -------------------------------------------------
 
     relevant_chunks = retrieve_relevant_chunks(
         question,
@@ -490,7 +568,9 @@ if question:
     )
 
 
-    # Create context
+    # -------------------------------------------------
+    # CREATE CONTEXT
+    # -------------------------------------------------
 
     if relevant_chunks:
 
@@ -500,16 +580,22 @@ if question:
 
     else:
 
-        context = "No study material has been uploaded."
+        context = (
+            "No study material has been uploaded."
+        )
 
 
-    # Generate AI answer
+    # -------------------------------------------------
+    # GENERATE AI ANSWER
+    # -------------------------------------------------
 
     with st.chat_message("assistant"):
 
-        with st.spinner("Thinking..."):
+        with st.spinner(
+            "Thinking..."
+        ):
 
-            answer = ask_ollama(
+            answer = ask_gemini(
                 question,
                 context
             )
@@ -517,11 +603,13 @@ if question:
             st.markdown(answer)
 
 
-    # Save answer
+    # -------------------------------------------------
+    # SAVE ANSWER
+    # -------------------------------------------------
 
     st.session_state.messages.append(
         {
             "role": "assistant",
             "content": answer
         }
-              )
+    )
