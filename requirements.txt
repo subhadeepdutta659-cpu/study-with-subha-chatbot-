@@ -1,4 +1,4 @@
 streamlit
 PyPDF2
 python-docx
-ollama
+google-genai
