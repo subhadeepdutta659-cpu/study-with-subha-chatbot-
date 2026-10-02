@@ -58,8 +58,8 @@ st.markdown("""
 # =====================================================
 # GEMINI SETTINGS
 # =====================================================
+model = genai.GenerativeModel("models/gemini-3.8-flash")
 
-MODEL_NAME = "gemini-2.5-flash"
 
 
 def get_api_key():
